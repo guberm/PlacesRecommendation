@@ -5,7 +5,7 @@ A C# ASP.NET Core Web API + Minimal HTML/JS UI for recommending nearby places (r
 
 ## GitHub
 
-`https://github.com/guberm/Recommendations`
+`https://github.com/guberm/PlacesRecommendation`
 
 ## Tech Stack
 - **.NET 10** — `src/Recommendations.Api/`

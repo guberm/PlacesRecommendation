@@ -23,7 +23,7 @@ Results are cached in **SQLite** to avoid redundant AI calls on repeated searche
 
 ```bash
 # 1. Clone
-git clone https://github.com/guberm/Recommendations.git
+git clone https://github.com/guberm/PlacesRecommendation.git
 cd Recommendations/src/Recommendations.Api
 
 # 2. Add at least one AI API key (see Configuration below)
