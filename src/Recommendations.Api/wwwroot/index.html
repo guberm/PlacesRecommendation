@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Place Recommendations</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <header class="site-header">
+    <h1>Place Recommendations</h1>
+    <p class="subtitle">AI-powered local discovery using multi-model consensus</p>
+    <div id="providerStatus" class="provider-status"></div>
+  </header>
+
+  <main>
+    <!-- Input Panel -->
+    <section class="input-panel card">
+      <div class="input-tabs">
+        <button class="tab-btn active" onclick="switchTab('coords')">Coordinates</button>
+        <button class="tab-btn" onclick="switchTab('address')">Address</button>
+      </div>
+
+      <div id="coordsTab" class="tab-content active">
+        <div class="field-row">
+          <div class="field">
+            <label for="lat">Latitude</label>
+            <input type="number" id="lat" step="any" placeholder="e.g. 51.5074" />
+          </div>
+          <div class="field">
+            <label for="lng">Longitude</label>
+            <input type="number" id="lng" step="any" placeholder="e.g. -0.1278" />
+          </div>
+        </div>
+      </div>
+
+      <div id="addressTab" class="tab-content">
+        <div class="field">
+          <label for="address">Address or Place Name</label>
+          <input type="text" id="address" placeholder="e.g. Eiffel Tower, Paris or Tel Aviv, Israel" />
+        </div>
+      </div>
+
+      <div class="field categories-field">
+        <label>Categories <span class="multi-hint">(select one or more)</span></label>
+        <div class="category-chips" id="categoryChips">
+          <button class="chip active" data-value="All" onclick="toggleCategory(this)">All Places</button>
+          <button class="chip" data-value="Restaurant" onclick="toggleCategory(this)">🍽 Restaurants</button>
+          <button class="chip" data-value="Cafe" onclick="toggleCategory(this)">☕ Cafes</button>
+          <button class="chip" data-value="TouristAttraction" onclick="toggleCategory(this)">🏛 Tourist Spots</button>
+          <button class="chip" data-value="Museum" onclick="toggleCategory(this)">🖼 Museums</button>
+          <button class="chip" data-value="Park" onclick="toggleCategory(this)">🌳 Parks</button>
+          <button class="chip" data-value="Bar" onclick="toggleCategory(this)">🍺 Bars</button>
+          <button class="chip" data-value="Hotel" onclick="toggleCategory(this)">🏨 Hotels</button>
+          <button class="chip" data-value="Shopping" onclick="toggleCategory(this)">🛍 Shopping</button>
+          <button class="chip" data-value="Entertainment" onclick="toggleCategory(this)">🎭 Entertainment</button>
+        </div>
+      </div>
+
+      <div class="options-row">
+        <div class="field">
+          <label for="radius">Radius: <span id="radiusLabel">1000m</span></label>
+          <input type="range" id="radius" min="500" max="5000" step="500" value="1000"
+            oninput="document.getElementById('radiusLabel').textContent = this.value + 'm'" />
+        </div>
+        <div class="field">
+          <label for="maxResults">Results</label>
+          <select id="maxResults">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="15">15</option>
+            <option value="20">20</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button id="searchBtn" class="btn-primary" onclick="search()">Get Recommendations</button>
+        <label class="checkbox-label">
+          <input type="checkbox" id="forceRefresh" />
+          Force Refresh (bypass cache)
+        </label>
+      </div>
+    </section>
+
+    <!-- Loading / Progress -->
+    <section id="progressSection" class="card hidden">
+      <h3>Processing...</h3>
+      <div id="progressSteps" class="progress-steps"></div>
+    </section>
+
+    <!-- Error -->
+    <section id="errorSection" class="card error-card hidden">
+      <h3>Error</h3>
+      <p id="errorMsg"></p>
+    </section>
+
+    <!-- Results -->
+    <section id="resultsSection" class="hidden">
+      <div class="results-header card">
+        <div>
+          <strong id="resultsLocation"></strong>
+          <span id="resultsMeta" class="meta-text"></span>
+        </div>
+        <div id="cacheIndicator" class="badge"></div>
+      </div>
+
+      <div id="resultsGrid" class="results-grid"></div>
+
+      <details class="card metadata-accordion">
+        <summary>Pipeline Metadata</summary>
+        <div id="metadataContent"></div>
+      </details>
+    </section>
+  </main>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
