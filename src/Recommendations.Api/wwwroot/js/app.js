@@ -1,9 +1,15 @@
 'use strict';
 
-let activeTab = 'coords';
+let activeTab = 'address';
+let geolocatedLat = null;
+let geolocatedLng = null;
 
 // Multi-select category state
 let selectedCategories = new Set(['All']);
+
+// Autocomplete state
+let autocompleteTimeout = null;
+let suppressAutocomplete = false;
 
 function toggleCategory(btn) {
   const value = btn.dataset.value;
@@ -23,12 +29,13 @@ function toggleCategory(btn) {
   });
 }
 
-function switchTab(tab) {
+function switchTab(tab, btn) {
   activeTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById(tab + 'Tab').classList.add('active');
-  event.target.classList.add('active');
+  const activeBtn = btn || document.querySelector(`.tab-btn[data-tab="${tab}"]`);
+  if (activeBtn) activeBtn.classList.add('active');
 }
 
 async function loadProviderStatus() {
@@ -38,20 +45,349 @@ async function loadProviderStatus() {
     const data = await res.json();
     const container = document.getElementById('providerStatus');
 
+    // Load user-saved keys so we can mark providers green if user has a key
+    const savedSettings = loadSettings();
+
     const allProviders = [
       ...data.providers,
       { name: 'Google Places', available: data.googlePlacesConfigured }
     ];
 
-    container.innerHTML = allProviders.map(p => `
-      <div class="provider-dot ${p.available ? 'active' : 'inactive'}">
-        <span class="dot"></span>
-        <span>${p.name}</span>
-      </div>
-    `).join('');
+    container.innerHTML = allProviders.map(p => {
+      // If server says unavailable, check if user has provided a key
+      const available = p.available || hasUserKeyForProvider(p.name, savedSettings);
+      return `
+        <div class="provider-dot ${available ? 'active' : 'inactive'}">
+          <span class="dot"></span>
+          <span>${p.name}${!p.available && available ? ' ✓' : ''}</span>
+        </div>`;
+    }).join('');
   } catch (e) {
     console.warn('Could not load provider status:', e);
   }
+}
+
+function hasUserKeyForProvider(providerName, settings) {
+  const n = providerName.toLowerCase();
+  if (n.includes('openrouter'))  return !!settings['OpenRouter'];
+  if (n.includes('claude') || n.includes('anthropic')) return !!settings['Anthropic'];
+  if (n.includes('gemini'))      return !!settings['Gemini'];
+  if (n.includes('azure'))       return !!(settings['AzureOpenAI'] && settings['AzureOpenAIEndpoint']);
+  if (n.includes('openai') || n.includes('gpt')) return !!settings['OpenAI'];
+  if (n.includes('google places')) return !!settings['GooglePlaces'];
+  return false;
+}
+
+// ─── Address autocomplete ─────────────────────────────────────────────────────
+
+async function fetchSuggestions(query) {
+  if (!query || query.length < 2) { hideAutocomplete(); return; }
+  try {
+    const res = await fetch(`/api/geocode/suggest?q=${encodeURIComponent(query)}`);
+    if (!res.ok) return;
+    const items = await res.json();
+    renderAutocomplete(items);
+  } catch (e) {
+    console.warn('Autocomplete error:', e);
+  }
+}
+
+function renderAutocomplete(items) {
+  const dropdown = document.getElementById('autocompleteDropdown');
+  if (!items || items.length === 0) { dropdown.classList.add('hidden'); return; }
+  dropdown.innerHTML = items.map(item =>
+    `<div class="autocomplete-item"
+          data-name="${escAttr(item.displayName)}"
+          data-lat="${item.latitude}"
+          data-lng="${item.longitude}"
+          onmousedown="selectSuggestion(this)">
+       <span class="autocomplete-icon">&#128205;</span>
+       <span class="autocomplete-text">${escHtml(item.displayName)}</span>
+     </div>`
+  ).join('');
+  dropdown.classList.remove('hidden');
+}
+
+function selectSuggestion(el) {
+  suppressAutocomplete = true;
+  document.getElementById('address').value = el.dataset.name;
+  hideAutocomplete();
+  setTimeout(() => { suppressAutocomplete = false; }, 300);
+}
+
+function hideAutocomplete() {
+  const dropdown = document.getElementById('autocompleteDropdown');
+  if (dropdown) dropdown.classList.add('hidden');
+}
+
+// ─── Geolocation ──────────────────────────────────────────────────────────────
+
+function detectLocation() {
+  const btn = document.getElementById('detectLocationBtn');
+  if (!navigator.geolocation) {
+    alert('Geolocation is not supported by your browser.');
+    return;
+  }
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Detecting…';
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const { latitude, longitude } = pos.coords;
+      // Store for direct submit (skip geocoding round-trip)
+      geolocatedLat = latitude;
+      geolocatedLng = longitude;
+      // Fill coords tab fields
+      document.getElementById('lat').value = latitude.toFixed(6);
+      document.getElementById('lng').value = longitude.toFixed(6);
+
+      const addressEl = document.getElementById('address');
+      addressEl.dataset.geolocated = 'true';
+      addressEl.value = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+
+      // Try to reverse-geocode to a readable address via photon
+      try {
+        const url = `https://photon.komoot.io/reverse?lon=${longitude}&lat=${latitude}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          const f = data?.features?.[0];
+          if (f) {
+            const p = f.properties;
+            const parts = [
+              p?.name, p?.street ? (p.housenumber ? `${p.housenumber} ${p.street}` : p.street) : null,
+              p?.city ?? p?.town ?? p?.village, p?.state, p?.country
+            ].filter(Boolean);
+            addressEl.value = parts.join(', ') || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+          } else {
+            addressEl.value = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+          }
+        } else {
+          addressEl.value = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+        }
+      } catch {
+        addressEl.value = `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = '&#128205; My Location';
+    },
+    (err) => {
+      btn.disabled = false;
+      btn.innerHTML = '&#128205; My Location';
+      const messages = {
+        1: 'Location access denied. Please allow location permission in your browser.',
+        2: 'Location unavailable. Try again.',
+        3: 'Location request timed out.'
+      };
+      alert(messages[err.code] || 'Could not get your location.');
+    },
+    { timeout: 10000, enableHighAccuracy: true }
+  );
+}
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+const SETTINGS_STORAGE_KEY = 'recommendations_settings';
+
+// Maps HTML input IDs (without "settings-" prefix) → backend dictionary keys
+// Model overrides follow the convention: model-{Provider} → {Provider}Model
+const SETTINGS_KEY_MAP = {
+  'key-OpenRouter':       'OpenRouter',
+  'model-OpenRouter':     'OpenRouterModel',
+  'key-OpenAI':           'OpenAI',
+  'model-OpenAI':         'OpenAIModel',
+  'key-Anthropic':        'Anthropic',
+  'model-Anthropic':      'AnthropicModel',
+  'key-Gemini':           'Gemini',
+  'model-Gemini':         'GeminiModel',
+  'key-AzureOpenAI':      'AzureOpenAI',
+  'endpoint-AzureOpenAI': 'AzureOpenAIEndpoint',
+  'model-AzureOpenAI':    'AzureOpenAIModel',
+  'key-GooglePlaces':     'GooglePlaces'
+};
+
+function openSettings() {
+  loadSettingsIntoModal();
+  document.getElementById('settingsModal').classList.remove('hidden');
+  document.body.classList.add('modal-open');
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.add('hidden');
+  document.body.classList.remove('modal-open');
+}
+
+function handleModalOverlayClick(e) {
+  if (e.target === e.currentTarget) closeSettings();
+}
+
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || '{}'); }
+  catch { return {}; }
+}
+
+function loadSettingsIntoModal() {
+  const settings = loadSettings();
+  for (const [fieldId, backendKey] of Object.entries(SETTINGS_KEY_MAP)) {
+    const el = document.getElementById('settings-' + fieldId);
+    if (!el) continue;
+    const savedVal = settings[backendKey] || '';
+    if (el.tagName === 'SELECT' && savedVal) {
+      // If the saved model isn't yet an option, add it so it can be shown
+      if (!selectHasValue(el, savedVal)) {
+        const opt = document.createElement('option');
+        opt.value = savedVal;
+        opt.textContent = savedVal + ' (saved)';
+        el.appendChild(opt);
+      }
+    }
+    el.value = savedVal;
+  }
+}
+
+function selectHasValue(selectEl, val) {
+  return Array.from(selectEl.options).some(o => o.value === val);
+}
+
+function saveSettings() {
+  const settings = {};
+  for (const [fieldId, backendKey] of Object.entries(SETTINGS_KEY_MAP)) {
+    const el = document.getElementById('settings-' + fieldId);
+    if (el && el.value.trim()) settings[backendKey] = el.value.trim();
+  }
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  updateSettingsIndicator(settings);
+  loadProviderStatus(); // refresh indicators with new keys
+  closeSettings();
+  const count = Object.keys(settings).length;
+  showToast(count > 0
+    ? `Settings saved (${count} override${count !== 1 ? 's' : ''})`
+    : 'Settings saved — using server defaults for all keys');
+}
+
+function clearSettings() {
+  localStorage.removeItem(SETTINGS_STORAGE_KEY);
+  for (const fieldId of Object.keys(SETTINGS_KEY_MAP)) {
+    const el = document.getElementById('settings-' + fieldId);
+    if (!el) continue;
+    if (el.tagName === 'SELECT') {
+      // Reset to only the default option
+      while (el.options.length > 1) el.remove(1);
+      el.selectedIndex = 0;
+    } else {
+      el.value = '';
+    }
+  }
+  updateSettingsIndicator({});
+  loadProviderStatus(); // refresh indicators after clear
+  showToast('All settings cleared — server defaults will be used');
+}
+
+function updateSettingsIndicator(settings) {
+  const btn = document.getElementById('settingsBtn');
+  if (!btn) return;
+  const count = Object.values(settings).filter(Boolean).length;
+  if (count > 0) {
+    btn.classList.add('has-keys');
+    btn.title = `Settings (${count} override${count !== 1 ? 's' : ''})`;
+  } else {
+    btn.classList.remove('has-keys');
+    btn.title = 'Settings';
+  }
+}
+
+function buildUserApiKeys() {
+  const settings = loadSettings();
+  const keys = {};
+  for (const backendKey of Object.values(SETTINGS_KEY_MAP)) {
+    if (settings[backendKey]) keys[backendKey] = settings[backendKey];
+  }
+  return Object.keys(keys).length > 0 ? keys : null;
+}
+
+// ─── Model fetching ───────────────────────────────────────────────────────────
+
+async function fetchModels(provider) {
+  const keyEl    = document.getElementById(`settings-key-${provider}`);
+  const selectEl = document.getElementById(`settings-model-${provider}`);
+  const statusEl = document.getElementById(`model-status-${provider}`);
+  if (!selectEl || !statusEl) return;
+
+  const apiKey = keyEl?.value.trim() || '';
+  const currentVal = selectEl.value;
+
+  statusEl.textContent = 'Loading models…';
+  statusEl.className = 'model-status loading';
+
+  try {
+    const params = new URLSearchParams({ provider });
+    if (apiKey) params.set('apiKey', apiKey);
+    if (provider.toLowerCase() === 'azureopenai') {
+      const endpointEl = document.getElementById('settings-endpoint-AzureOpenAI');
+      const ep = endpointEl?.value.trim();
+      if (ep) params.set('endpoint', ep);
+    }
+
+    const res = await fetch(`/api/providers/models?${params}`);
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    const data = await res.json();
+
+    if (!data.models || data.models.length === 0) {
+      statusEl.textContent = data.warning || 'No models returned. Enter an API key and try again.';
+      statusEl.className = 'model-status warning';
+      return;
+    }
+
+    populateModelSelect(selectEl, data.models, currentVal);
+
+    if (data.warning) {
+      statusEl.textContent = data.warning;
+      statusEl.className = 'model-status warning';
+    } else {
+      statusEl.textContent = `${data.models.length} model${data.models.length !== 1 ? 's' : ''} loaded`;
+      statusEl.className = 'model-status success';
+      setTimeout(() => { statusEl.textContent = ''; statusEl.className = 'model-status'; }, 3000);
+    }
+  } catch (e) {
+    statusEl.textContent = `Error: ${e.message}`;
+    statusEl.className = 'model-status error';
+  }
+}
+
+function populateModelSelect(selectEl, models, preserveVal) {
+  selectEl.innerHTML = '<option value="">(server default)</option>';
+  for (const m of models) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.name || m.id;
+    selectEl.appendChild(opt);
+  }
+  // Restore previous selection or the currently saved one
+  if (preserveVal) {
+    selectEl.value = preserveVal;
+    if (!selectEl.value) {
+      // The saved value wasn't in the loaded list → add it as custom entry
+      const opt = document.createElement('option');
+      opt.value = preserveVal;
+      opt.textContent = preserveVal + ' (custom)';
+      selectEl.appendChild(opt);
+      selectEl.value = preserveVal;
+    }
+  }
+}
+
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.remove('hidden', 'toast-hide');
+  toast.classList.add('toast-show');
+  setTimeout(() => {
+    toast.classList.remove('toast-show');
+    toast.classList.add('toast-hide');
+    setTimeout(() => { toast.classList.add('hidden'); toast.classList.remove('toast-hide'); }, 400);
+  }, 2500);
 }
 
 const pipelineSteps = [
@@ -117,11 +453,16 @@ function hideAll() {
 
 async function search() {
   hideAll();
-  document.getElementById('searchBtn').disabled = true;
+  hideAutocomplete();
+  const searchBtn = document.getElementById('searchBtn');
+  searchBtn.disabled = true;
+  const origBtnText = searchBtn.textContent;
+  searchBtn.innerHTML = '<span class="btn-spinner"></span> Processing…';
 
   const maxResults = parseInt(document.getElementById('maxResults').value, 10);
   const radiusMeters = parseInt(document.getElementById('radius').value, 10);
   const forceRefresh = document.getElementById('forceRefresh').checked;
+  const userApiKeys = buildUserApiKeys();
 
   // Build category params: single "All" or multi-select array
   const isAll = selectedCategories.size === 1 && selectedCategories.has('All');
@@ -129,7 +470,8 @@ async function search() {
     ...(isAll ? { category: 'All' } : { categories: Array.from(selectedCategories) }),
     maxResults,
     radiusMeters,
-    forceRefresh
+    forceRefresh,
+    ...(userApiKeys ? { userApiKeys } : {})
   };
 
   if (activeTab === 'coords') {
@@ -137,19 +479,28 @@ async function search() {
     const lng = parseFloat(document.getElementById('lng').value);
     if (isNaN(lat) || isNaN(lng)) {
       showError('Please enter valid latitude and longitude.');
-      document.getElementById('searchBtn').disabled = false;
+      searchBtn.disabled = false;
+      searchBtn.textContent = origBtnText;
       return;
     }
     request.latitude = lat;
     request.longitude = lng;
   } else {
-    const addr = document.getElementById('address').value.trim();
+    const addressEl = document.getElementById('address');
+    const addr = addressEl.value.trim();
     if (!addr) {
       showError('Please enter an address or place name.');
-      document.getElementById('searchBtn').disabled = false;
+      searchBtn.disabled = false;
+      searchBtn.textContent = origBtnText;
       return;
     }
-    request.address = addr;
+    // If address was filled by geolocation, send coordinates directly
+    if (addressEl.dataset.geolocated === 'true' && geolocatedLat !== null && geolocatedLng !== null) {
+      request.latitude = geolocatedLat;
+      request.longitude = geolocatedLng;
+    } else {
+      request.address = addr;
+    }
   }
 
   const stopProgress = showProgress();
@@ -163,10 +514,13 @@ async function search() {
 
     stopProgress();
     document.getElementById('progressSection').classList.add('hidden');
+    searchBtn.disabled = false;
+    searchBtn.textContent = origBtnText;
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
-      showError(err.error || err.errors?.join(', ') || 'Request failed.');
+      // ProblemDetails uses "detail", custom errors use "error" or "errors"
+      showError(err.detail || err.error || err.errors?.join(', ') || res.statusText || 'Request failed.');
       return;
     }
 
@@ -174,9 +528,12 @@ async function search() {
     renderResults(data);
   } catch (e) {
     stopProgress();
+    searchBtn.disabled = false;
+    searchBtn.textContent = origBtnText;
     showError('Network error: ' + e.message);
   } finally {
-    document.getElementById('searchBtn').disabled = false;
+    searchBtn.disabled = false;
+    searchBtn.textContent = origBtnText;
   }
 }
 
@@ -327,14 +684,40 @@ async function copyToClipboard(text, btn) {
   }
 }
 
-// Handle Enter key
+// Initialization
 document.addEventListener('DOMContentLoaded', () => {
   loadProviderStatus();
+  updateSettingsIndicator(loadSettings());
 
-  document.getElementById('address').addEventListener('keydown', e => {
-    if (e.key === 'Enter') search();
+  const addressInput = document.getElementById('address');
+  addressInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { hideAutocomplete(); search(); }
+    if (e.key === 'Escape') hideAutocomplete();
   });
+  addressInput.addEventListener('input', () => {
+    // Clear geolocated flag when user manually types
+    addressInput.dataset.geolocated = '';
+    geolocatedLat = null;
+    geolocatedLng = null;
+    if (suppressAutocomplete) return;
+    clearTimeout(autocompleteTimeout);
+    const val = addressInput.value.trim();
+    if (val.length < 2) { hideAutocomplete(); return; }
+    autocompleteTimeout = setTimeout(() => fetchSuggestions(val), 350);
+  });
+  addressInput.addEventListener('blur', () => {
+    setTimeout(hideAutocomplete, 200);
+  });
+
   document.getElementById('lat').addEventListener('keydown', e => {
     if (e.key === 'Enter') search();
+  });
+  document.getElementById('lng').addEventListener('keydown', e => {
+    if (e.key === 'Enter') search();
+  });
+
+  // Close settings modal on Escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeSettings();
   });
 });

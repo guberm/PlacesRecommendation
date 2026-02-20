@@ -35,15 +35,7 @@ builder.Services.AddDbContext<RecommendationsDbContext>(opts =>
         ?? "Data Source=recommendations.db"));
 
 // HTTP Clients
-builder.Services.AddHttpClient<NominatimGeocodingProvider>(client =>
-{
-    var baseUrl = builder.Configuration["Nominatim:BaseUrl"] ?? "https://nominatim.openstreetmap.org";
-    var userAgent = builder.Configuration["Nominatim:UserAgent"] ?? "RecommendationsApp/1.0";
-    client.BaseAddress = new Uri(baseUrl);
-    client.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
-    client.Timeout = TimeSpan.FromSeconds(
-        builder.Configuration.GetValue<int>("Nominatim:TimeoutSeconds", 10));
-}).AddTransientHttpErrorPolicy(p => p.WaitAndRetryAsync(2, _ => TimeSpan.FromSeconds(1)));
+// NominatimGeocodingProvider uses IHttpClientFactory internally (photon.komoot.io)
 
 builder.Services.AddHttpClient<GooglePlacesProvider>(client =>
 {
@@ -63,14 +55,8 @@ builder.Services.AddSingleton<IAiProvider, OpenRouterProvider>();
 builder.Services.AddHttpClient("openrouter", client =>
     client.Timeout = Timeout.InfiniteTimeSpan);
 
-// Places & Geocoding - Typed HTTP clients registered as interfaces
-builder.Services.AddHttpClient<IGeocodingProvider, NominatimGeocodingProvider>(client =>
-{
-    var baseUrl = builder.Configuration["Nominatim:BaseUrl"] ?? "https://nominatim.openstreetmap.org";
-    client.BaseAddress = new Uri(baseUrl);
-    client.DefaultRequestHeaders.UserAgent.ParseAdd(
-        builder.Configuration["Nominatim:UserAgent"] ?? "RecommendationsApp/1.0");
-});
+// Places & Geocoding
+builder.Services.AddScoped<IGeocodingProvider, NominatimGeocodingProvider>();
 builder.Services.AddHttpClient<IPlacesProvider, GooglePlacesProvider>(client =>
 {
     var baseUrl = builder.Configuration["GooglePlaces:BaseUrl"] ?? "https://places.googleapis.com/v1";
@@ -124,6 +110,8 @@ app.UseStaticFiles();
 
 RecommendationEndpoints.Map(app);
 HealthEndpoints.Map(app);
+GeocodeEndpoints.Map(app);
+ModelsEndpoint.Map(app);
 
 app.MapFallbackToFile("index.html");
 

@@ -31,3 +31,10 @@ Thumbs.db
 
 # Claude working files
 .claude/
+tmpclaude-*
+
+# Deployment scripts (contain credentials — stored in private repo)
+deploy/
+
+# Publish output (build artifacts + appsettings with keys)
+publish/

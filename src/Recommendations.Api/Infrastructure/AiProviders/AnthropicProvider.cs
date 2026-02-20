@@ -6,6 +6,7 @@ using Recommendations.Api.Abstractions;
 using Recommendations.Api.Configuration;
 using Recommendations.Api.Domain;
 using Recommendations.Api.Domain.Enums;
+using Recommendations.Api.Infrastructure;
 
 namespace Recommendations.Api.Infrastructure.AiProviders;
 
@@ -15,7 +16,7 @@ public class AnthropicProvider : AiProviderBase, IAiProvider
     private readonly ILogger<AnthropicProvider> _logger;
 
     public string Name => "Claude";
-    public bool IsAvailable => _options.Enabled && !string.IsNullOrWhiteSpace(_options.ApiKey);
+    public bool IsAvailable => _options.Enabled && UserApiKeyContext.HasEffectiveKey("Anthropic", _options.ApiKey);
 
     public AnthropicProvider(IOptions<AiProviderOptions> options, ILogger<AnthropicProvider> logger)
     {
@@ -23,7 +24,7 @@ public class AnthropicProvider : AiProviderBase, IAiProvider
         _logger = logger;
     }
 
-    private AnthropicClient CreateClient() => new(_options.ApiKey);
+    private AnthropicClient CreateClient() => new(UserApiKeyContext.GetEffectiveKey("Anthropic", _options.ApiKey));
 
     public async Task<AiProviderResult> GenerateRecommendationsAsync(
         double latitude, double longitude, IReadOnlyList<PlaceCategory> categories,
@@ -39,7 +40,7 @@ public class AnthropicProvider : AiProviderBase, IAiProvider
             var prompt = BuildGenerationPrompt(latitude, longitude, categories, locationContext);
             var response = await client.Messages.GetClaudeMessageAsync(new MessageParameters
             {
-                Model = _options.Model,
+                Model = UserApiKeyContext.GetEffectiveModel("AnthropicModel", _options.Model),
                 MaxTokens = _options.MaxTokens,
                 Messages = new List<Message> { new() { Role = RoleType.User, Content = new List<ContentBase> { new TextContent { Text = prompt } } } }
             }, cts.Token);
@@ -81,7 +82,7 @@ public class AnthropicProvider : AiProviderBase, IAiProvider
             var prompt = BuildValidationPrompt(latitude, longitude, sourceProviderName, recommendations);
             var response = await client.Messages.GetClaudeMessageAsync(new MessageParameters
             {
-                Model = _options.Model,
+                Model = UserApiKeyContext.GetEffectiveModel("AnthropicModel", _options.Model),
                 MaxTokens = _options.MaxTokens,
                 Messages = new List<Message> { new() { Role = RoleType.User, Content = new List<ContentBase> { new TextContent { Text = prompt } } } }
             }, cts.Token);
@@ -114,7 +115,7 @@ public class AnthropicProvider : AiProviderBase, IAiProvider
             var prompt = BuildSynthesisPrompt(latitude, longitude, categories, scoredCandidates, locationContext);
             var response = await client.Messages.GetClaudeMessageAsync(new MessageParameters
             {
-                Model = _options.Model,
+                Model = UserApiKeyContext.GetEffectiveModel("AnthropicModel", _options.Model),
                 MaxTokens = _options.MaxTokens,
                 Messages = new List<Message> { new() { Role = RoleType.User, Content = new List<ContentBase> { new TextContent { Text = prompt } } } }
             }, cts.Token);

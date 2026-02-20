@@ -1,5 +1,6 @@
 using Recommendations.Api.Domain;
 using Recommendations.Api.Domain.Enums;
+using Recommendations.Api.Infrastructure;
 using Recommendations.Api.Pipeline.Steps;
 
 namespace Recommendations.Api.Pipeline;
@@ -41,10 +42,17 @@ public class RecommendationOrchestrator
     public async Task<RecommendationResponse> GetRecommendationsAsync(
         RecommendationRequest request, CancellationToken ct = default)
     {
+        // Apply per-request user API key + model overrides for this async execution context
+        UserApiKeyContext.Set(request.UserApiKeys);
+
         var ctx = new PipelineContext { Request = request };
 
         _logger.LogInformation("Starting recommendation pipeline for request: {Category} at ({Lat},{Lng}) / '{Address}'",
-            request.Category, request.Latitude, request.Longitude, request.Address);
+            string.Join("+", request.EffectiveCategories), request.Latitude, request.Longitude, request.Address);
+        _logger.LogDebug("Effective categories: [{Categories}] | Radius: {Radius}m | MaxResults: {Max} | ForceRefresh: {Force} | UserKeys: {KeyCount}",
+            string.Join(", ", request.EffectiveCategories),
+            request.RadiusMeters, request.MaxResults, request.ForceRefresh,
+            request.UserApiKeys?.Count ?? 0);
 
         // Step 1: Geocode
         await _geocodeStep.ExecuteAsync(ctx, ct);

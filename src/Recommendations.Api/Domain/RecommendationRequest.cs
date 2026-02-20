@@ -18,6 +18,14 @@ public record RecommendationRequest
     public int RadiusMeters { get; init; } = 1000;
     public bool ForceRefresh { get; init; } = false;
 
+    /// <summary>
+    /// Optional per-request API key + model overrides (sent from the browser settings panel).
+    /// Keys: "OpenRouter", "OpenAI", "Anthropic", "Gemini", "AzureOpenAI", "AzureOpenAIEndpoint", "GooglePlaces"
+    ///       plus model overrides: "OpenRouterModel", "OpenAIModel", "AnthropicModel", "GeminiModel", "AzureOpenAIModel".
+    /// When present, these override the server-configured values for this request only.
+    /// </summary>
+    public Dictionary<string, string>? UserApiKeys { get; init; }
+
     /// <summary>The resolved category list: Categories (if set) else [Category].</summary>
     public IReadOnlyList<PlaceCategory> EffectiveCategories =>
         Categories is { Count: > 0 } ? Categories : new[] { Category };

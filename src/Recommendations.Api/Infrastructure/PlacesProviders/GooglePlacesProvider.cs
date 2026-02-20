@@ -5,6 +5,7 @@ using Recommendations.Api.Abstractions;
 using Recommendations.Api.Configuration;
 using Recommendations.Api.Domain;
 using Recommendations.Api.Domain.Enums;
+using Recommendations.Api.Infrastructure;
 
 namespace Recommendations.Api.Infrastructure.PlacesProviders;
 
@@ -15,7 +16,7 @@ public class GooglePlacesProvider : IPlacesProvider
     private readonly ILogger<GooglePlacesProvider> _logger;
 
     public string Name => "Google Places";
-    public bool IsAvailable => !string.IsNullOrWhiteSpace(_options.ApiKey);
+    public bool IsAvailable => UserApiKeyContext.HasEffectiveKey("GooglePlaces", _options.ApiKey);
 
     public GooglePlacesProvider(
         HttpClient http,
@@ -58,7 +59,7 @@ public class GooglePlacesProvider : IPlacesProvider
             {
                 Content = JsonContent.Create(body)
             };
-            request.Headers.Add("X-Goog-Api-Key", _options.ApiKey);
+            request.Headers.Add("X-Goog-Api-Key", UserApiKeyContext.GetEffectiveKey("GooglePlaces", _options.ApiKey));
             request.Headers.Add("X-Goog-FieldMask",
                 "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.websiteUri,places.nationalPhoneNumber,places.primaryTypeDisplayName");
 

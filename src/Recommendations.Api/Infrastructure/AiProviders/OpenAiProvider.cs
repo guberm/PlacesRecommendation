@@ -6,6 +6,7 @@ using Recommendations.Api.Abstractions;
 using Recommendations.Api.Configuration;
 using Recommendations.Api.Domain;
 using Recommendations.Api.Domain.Enums;
+using Recommendations.Api.Infrastructure;
 
 namespace Recommendations.Api.Infrastructure.AiProviders;
 
@@ -15,7 +16,7 @@ public class OpenAiProvider : AiProviderBase, IAiProvider
     private readonly ILogger<OpenAiProvider> _logger;
 
     public string Name => "OpenAI GPT-4";
-    public bool IsAvailable => _options.Enabled && !string.IsNullOrWhiteSpace(_options.ApiKey);
+    public bool IsAvailable => _options.Enabled && UserApiKeyContext.HasEffectiveKey("OpenAI", _options.ApiKey);
 
     public OpenAiProvider(IOptions<AiProviderOptions> options, ILogger<OpenAiProvider> logger)
     {
@@ -24,7 +25,9 @@ public class OpenAiProvider : AiProviderBase, IAiProvider
     }
 
     private ChatClient CreateClient() =>
-        new ChatClient(_options.Model, new System.ClientModel.ApiKeyCredential(_options.ApiKey));
+        new ChatClient(
+            UserApiKeyContext.GetEffectiveModel("OpenAIModel", _options.Model),
+            new System.ClientModel.ApiKeyCredential(UserApiKeyContext.GetEffectiveKey("OpenAI", _options.ApiKey)));
 
     public async Task<AiProviderResult> GenerateRecommendationsAsync(
         double latitude, double longitude, IReadOnlyList<PlaceCategory> categories,

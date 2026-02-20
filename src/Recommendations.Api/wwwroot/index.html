@@ -8,8 +8,15 @@
 </head>
 <body>
   <header class="site-header">
-    <h1>Place Recommendations</h1>
-    <p class="subtitle">AI-powered local discovery using multi-model consensus</p>
+    <div class="header-main">
+      <div>
+        <h1>Place Recommendations</h1>
+        <p class="subtitle">AI-powered local discovery using multi-model consensus</p>
+      </div>
+      <button id="settingsBtn" class="settings-btn" onclick="openSettings()" title="Settings" aria-label="Open settings">
+        &#9881;
+      </button>
+    </div>
     <div id="providerStatus" class="provider-status"></div>
   </header>
 
@@ -17,11 +24,11 @@
     <!-- Input Panel -->
     <section class="input-panel card">
       <div class="input-tabs">
-        <button class="tab-btn active" onclick="switchTab('coords')">Coordinates</button>
-        <button class="tab-btn" onclick="switchTab('address')">Address</button>
+        <button class="tab-btn" data-tab="coords" onclick="switchTab('coords', this)">Coordinates</button>
+        <button class="tab-btn active" data-tab="address" onclick="switchTab('address', this)">Address</button>
       </div>
 
-      <div id="coordsTab" class="tab-content active">
+      <div id="coordsTab" class="tab-content">
         <div class="field-row">
           <div class="field">
             <label for="lat">Latitude</label>
@@ -34,10 +41,19 @@
         </div>
       </div>
 
-      <div id="addressTab" class="tab-content">
-        <div class="field">
-          <label for="address">Address or Place Name</label>
-          <input type="text" id="address" placeholder="e.g. Eiffel Tower, Paris or Tel Aviv, Israel" />
+      <div id="addressTab" class="tab-content active">
+        <div class="address-row">
+          <div class="field address-field-wrap">
+            <label for="address">Address or Place Name</label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="address" autocomplete="off"
+                placeholder="e.g. Eiffel Tower, Paris or Tel Aviv, Israel" />
+              <div id="autocompleteDropdown" class="autocomplete-dropdown hidden"></div>
+            </div>
+          </div>
+          <button id="detectLocationBtn" class="btn-location" onclick="detectLocation()" title="Detect my current location">
+            &#128205; My Location
+          </button>
         </div>
       </div>
 
@@ -113,6 +129,160 @@
       </details>
     </section>
   </main>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal-overlay hidden" onclick="handleModalOverlayClick(event)">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>&#9881; Settings</h2>
+        <button class="modal-close-btn" onclick="closeSettings()" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="settings-hint">
+          API keys and models are stored in your browser (localStorage) and sent with each request,
+          overriding the server-configured values. Leave empty to use the server&rsquo;s defaults.
+        </p>
+
+        <div class="settings-section">
+          <h3 class="settings-section-title">AI Providers</h3>
+
+          <!-- OpenRouter -->
+          <div class="provider-settings-group">
+            <div class="provider-settings-header">OpenRouter</div>
+            <div class="field">
+              <label for="settings-key-OpenRouter">API Key</label>
+              <input type="password" id="settings-key-OpenRouter"
+                placeholder="sk-or-... (leave empty for server default)" autocomplete="new-password" />
+            </div>
+            <div class="model-row">
+              <div class="field model-field">
+                <label for="settings-model-OpenRouter">Model</label>
+                <select id="settings-model-OpenRouter" class="model-select">
+                  <option value="">(server default)</option>
+                </select>
+              </div>
+              <button class="btn-load-models" onclick="fetchModels('OpenRouter')" title="Load available models">
+                Load Models
+              </button>
+            </div>
+            <div id="model-status-OpenRouter" class="model-status"></div>
+          </div>
+
+          <!-- OpenAI -->
+          <div class="provider-settings-group">
+            <div class="provider-settings-header">OpenAI</div>
+            <div class="field">
+              <label for="settings-key-OpenAI">API Key</label>
+              <input type="password" id="settings-key-OpenAI"
+                placeholder="sk-... (leave empty for server default)" autocomplete="new-password" />
+            </div>
+            <div class="model-row">
+              <div class="field model-field">
+                <label for="settings-model-OpenAI">Model</label>
+                <select id="settings-model-OpenAI" class="model-select">
+                  <option value="">(server default)</option>
+                </select>
+              </div>
+              <button class="btn-load-models" onclick="fetchModels('OpenAI')" title="Load available models (requires API key)">
+                Load Models
+              </button>
+            </div>
+            <div id="model-status-OpenAI" class="model-status"></div>
+          </div>
+
+          <!-- Anthropic -->
+          <div class="provider-settings-group">
+            <div class="provider-settings-header">Anthropic (Claude)</div>
+            <div class="field">
+              <label for="settings-key-Anthropic">API Key</label>
+              <input type="password" id="settings-key-Anthropic"
+                placeholder="sk-ant-... (leave empty for server default)" autocomplete="new-password" />
+            </div>
+            <div class="model-row">
+              <div class="field model-field">
+                <label for="settings-model-Anthropic">Model</label>
+                <select id="settings-model-Anthropic" class="model-select">
+                  <option value="">(server default)</option>
+                </select>
+              </div>
+              <button class="btn-load-models" onclick="fetchModels('Anthropic')" title="Load available models">
+                Load Models
+              </button>
+            </div>
+            <div id="model-status-Anthropic" class="model-status"></div>
+          </div>
+
+          <!-- Gemini -->
+          <div class="provider-settings-group">
+            <div class="provider-settings-header">Google Gemini</div>
+            <div class="field">
+              <label for="settings-key-Gemini">API Key</label>
+              <input type="password" id="settings-key-Gemini"
+                placeholder="AIza... (leave empty for server default)" autocomplete="new-password" />
+            </div>
+            <div class="model-row">
+              <div class="field model-field">
+                <label for="settings-model-Gemini">Model</label>
+                <select id="settings-model-Gemini" class="model-select">
+                  <option value="">(server default)</option>
+                </select>
+              </div>
+              <button class="btn-load-models" onclick="fetchModels('Gemini')" title="Load available models (requires API key)">
+                Load Models
+              </button>
+            </div>
+            <div id="model-status-Gemini" class="model-status"></div>
+          </div>
+
+          <!-- Azure OpenAI -->
+          <div class="provider-settings-group">
+            <div class="provider-settings-header">Azure OpenAI</div>
+            <div class="field">
+              <label for="settings-key-AzureOpenAI">API Key</label>
+              <input type="password" id="settings-key-AzureOpenAI"
+                placeholder="(leave empty for server default)" autocomplete="new-password" />
+            </div>
+            <div class="field">
+              <label for="settings-endpoint-AzureOpenAI">Endpoint</label>
+              <input type="text" id="settings-endpoint-AzureOpenAI"
+                placeholder="https://your-resource.openai.azure.com" autocomplete="off" />
+            </div>
+            <div class="model-row">
+              <div class="field model-field">
+                <label for="settings-model-AzureOpenAI">Deployment Name</label>
+                <select id="settings-model-AzureOpenAI" class="model-select">
+                  <option value="">(server default)</option>
+                </select>
+              </div>
+              <button class="btn-load-models" onclick="fetchModels('AzureOpenAI')" title="Load common deployment names">
+                Load Suggestions
+              </button>
+            </div>
+            <div id="model-status-AzureOpenAI" class="model-status"></div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="settings-section-title">Places API</h3>
+          <div class="provider-settings-group">
+            <div class="field">
+              <label for="settings-key-GooglePlaces">Google Places API Key</label>
+              <input type="password" id="settings-key-GooglePlaces"
+                placeholder="AIza... (leave empty for server default)" autocomplete="new-password" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-primary" onclick="saveSettings()">Save Settings</button>
+        <button class="btn-outline" onclick="clearSettings()">Clear All (Use Server Defaults)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast hidden"></div>
 
   <script src="/js/app.js"></script>
 </body>

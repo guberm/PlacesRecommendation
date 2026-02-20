@@ -274,7 +274,7 @@ public abstract class AiProviderBase
         }
     }
 
-    private static string ExtractJson(string raw)
+    protected static string ExtractJson(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
 

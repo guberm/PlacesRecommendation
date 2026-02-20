@@ -5,6 +5,7 @@ using Recommendations.Api.Abstractions;
 using Recommendations.Api.Configuration;
 using Recommendations.Api.Domain;
 using Recommendations.Api.Domain.Enums;
+using Recommendations.Api.Infrastructure;
 
 namespace Recommendations.Api.Infrastructure.AiProviders;
 
@@ -14,7 +15,7 @@ public class GeminiProvider : AiProviderBase, IAiProvider
     private readonly ILogger<GeminiProvider> _logger;
 
     public string Name => "Google Gemini";
-    public bool IsAvailable => _options.Enabled && !string.IsNullOrWhiteSpace(_options.ApiKey);
+    public bool IsAvailable => _options.Enabled && UserApiKeyContext.HasEffectiveKey("Gemini", _options.ApiKey);
 
     public GeminiProvider(IOptions<AiProviderOptions> options, ILogger<GeminiProvider> logger)
     {
@@ -24,8 +25,8 @@ public class GeminiProvider : AiProviderBase, IAiProvider
 
     private GenerativeModel CreateModel()
     {
-        var googleAi = new GoogleAI(_options.ApiKey);
-        return googleAi.GenerativeModel(_options.Model);
+        var googleAi = new GoogleAI(UserApiKeyContext.GetEffectiveKey("Gemini", _options.ApiKey));
+        return googleAi.GenerativeModel(UserApiKeyContext.GetEffectiveModel("GeminiModel", _options.Model));
     }
 
     public async Task<AiProviderResult> GenerateRecommendationsAsync(

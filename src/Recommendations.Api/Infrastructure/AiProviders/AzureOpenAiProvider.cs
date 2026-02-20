@@ -6,6 +6,7 @@ using Recommendations.Api.Abstractions;
 using Recommendations.Api.Configuration;
 using Recommendations.Api.Domain;
 using Recommendations.Api.Domain.Enums;
+using Recommendations.Api.Infrastructure;
 
 namespace Recommendations.Api.Infrastructure.AiProviders;
 
@@ -16,8 +17,8 @@ public class AzureOpenAiProvider : AiProviderBase, IAiProvider
 
     public string Name => "Azure OpenAI";
     public bool IsAvailable => _options.Enabled
-        && !string.IsNullOrWhiteSpace(_options.ApiKey)
-        && !string.IsNullOrWhiteSpace(_options.Endpoint);
+        && UserApiKeyContext.HasEffectiveKey("AzureOpenAI", _options.ApiKey)
+        && !string.IsNullOrWhiteSpace(UserApiKeyContext.GetEffectiveKey("AzureOpenAIEndpoint", _options.Endpoint));
 
     public AzureOpenAiProvider(IOptions<AiProviderOptions> options, ILogger<AzureOpenAiProvider> logger)
     {
@@ -27,10 +28,13 @@ public class AzureOpenAiProvider : AiProviderBase, IAiProvider
 
     private ChatClient CreateClient()
     {
+        var effectiveEndpoint = UserApiKeyContext.GetEffectiveKey("AzureOpenAIEndpoint", _options.Endpoint);
+        var effectiveKey      = UserApiKeyContext.GetEffectiveKey("AzureOpenAI", _options.ApiKey);
+        var effectiveModel    = UserApiKeyContext.GetEffectiveModel("AzureOpenAIModel", _options.DeploymentName);
         var azureClient = new AzureOpenAIClient(
-            new Uri(_options.Endpoint),
-            new System.ClientModel.ApiKeyCredential(_options.ApiKey));
-        return azureClient.GetChatClient(_options.DeploymentName);
+            new Uri(effectiveEndpoint),
+            new System.ClientModel.ApiKeyCredential(effectiveKey));
+        return azureClient.GetChatClient(effectiveModel);
     }
 
     public async Task<AiProviderResult> GenerateRecommendationsAsync(

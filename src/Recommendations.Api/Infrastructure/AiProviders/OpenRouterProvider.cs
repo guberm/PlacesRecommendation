@@ -8,6 +8,7 @@ using Recommendations.Api.Abstractions;
 using Recommendations.Api.Configuration;
 using Recommendations.Api.Domain;
 using Recommendations.Api.Domain.Enums;
+using Recommendations.Api.Infrastructure;
 
 namespace Recommendations.Api.Infrastructure.AiProviders;
 
@@ -23,8 +24,8 @@ public class OpenRouterProvider : AiProviderBase, IAiProvider
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<OpenRouterProvider> _logger;
 
-    public string Name => $"OpenRouter ({_options.Model})";
-    public bool IsAvailable => _options.Enabled && !string.IsNullOrWhiteSpace(_options.ApiKey);
+    public string Name => "OpenRouter (" + UserApiKeyContext.GetEffectiveModel("OpenRouterModel", _options.Model) + ")";
+    public bool IsAvailable => _options.Enabled && UserApiKeyContext.HasEffectiveKey("OpenRouter", _options.ApiKey);
 
     public OpenRouterProvider(
         IOptions<AiProviderOptions> options,
@@ -54,7 +55,33 @@ public class OpenRouterProvider : AiProviderBase, IAiProvider
             var recommendations = ParseGenerationJson(raw, Name, categories.Count == 1 ? categories[0] : PlaceCategory.All);
 
             if (recommendations.Count == 0 && !string.IsNullOrWhiteSpace(raw))
+            {
                 _logger.LogWarning("{Provider}: JSON parse produced 0 recommendations. Raw starts with: {Start}", Name, raw.Length > 300 ? raw[..300] : raw);
+                // Diagnostic: try parsing step-by-step to find the failure point
+                try
+                {
+                    var extracted = ExtractJson(raw);
+                    _logger.LogWarning("{Provider}: Diagnostic - ExtractJson returned {Len} chars. Starts: {Start}",
+                        Name, extracted.Length, extracted.Length > 200 ? extracted[..200] : extracted);
+                    if (!string.IsNullOrWhiteSpace(extracted))
+                    {
+                        var node = JsonNode.Parse(extracted);
+                        var arr = node?["recommendations"]?.AsArray();
+                        _logger.LogWarning("{Provider}: Diagnostic - node={NodeNull}, arr={ArrNull}, count={Count}",
+                            Name, node != null ? "ok" : "null", arr != null ? "ok" : "null", arr?.Count ?? -1);
+                        if (arr != null && arr.Count > 0)
+                        {
+                            var first = arr[0];
+                            _logger.LogWarning("{Provider}: Diagnostic - first item keys: {Item}",
+                                Name, first?.ToJsonString()[..Math.Min(300, first.ToJsonString().Length)]);
+                        }
+                    }
+                }
+                catch (Exception diagEx)
+                {
+                    _logger.LogWarning("{Provider}: Diagnostic parse exception: {Msg}", Name, diagEx.Message);
+                }
+            }
 
             _logger.LogInformation("{Provider} generated {Count} recommendations in {Ms}ms",
                 Name, recommendations.Count, sw.ElapsedMilliseconds);
@@ -138,9 +165,11 @@ public class OpenRouterProvider : AiProviderBase, IAiProvider
         var http = _httpFactory.CreateClient("openrouter");
 
         // stream:true — receive tokens as they arrive; avoids buffering timeouts on slow thinking models
+        var effectiveModel = UserApiKeyContext.GetEffectiveModel("OpenRouterModel", _options.Model);
+        var effectiveKey   = UserApiKeyContext.GetEffectiveKey("OpenRouter", _options.ApiKey);
         var body = JsonSerializer.Serialize(new
         {
-            model = _options.Model,
+            model = effectiveModel,
             max_tokens = _options.MaxTokens,
             stream = true,
             messages = new[] { new { role = "user", content = userPrompt } }
@@ -150,7 +179,7 @@ public class OpenRouterProvider : AiProviderBase, IAiProvider
         {
             Content = new StringContent(body, Encoding.UTF8, "application/json")
         };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ApiKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", effectiveKey);
         request.Headers.TryAddWithoutValidation("HTTP-Referer", _options.AppReferer);
         request.Headers.TryAddWithoutValidation("X-Title", _options.AppTitle);
 
@@ -186,15 +215,16 @@ public class OpenRouterProvider : AiProviderBase, IAiProvider
 
                 // Standard content (non-thinking models)
                 var content = delta?["content"]?.GetValue<string>();
-                if (content != null) contentSb.Append(content);
+                if (!string.IsNullOrEmpty(content)) contentSb.Append(content);
 
-                // reasoning_content: used by thinking models (stepfun, qwen-thinking, etc.)
-                var reasoning = delta?["reasoning_content"]?.GetValue<string>();
-                if (reasoning != null) reasoningSb.Append(reasoning);
+                // reasoning_content OR reasoning: different models use different field names
+                var reasoning = delta?["reasoning_content"]?.GetValue<string>()
+                             ?? delta?["reasoning"]?.GetValue<string>();
+                if (!string.IsNullOrEmpty(reasoning)) reasoningSb.Append(reasoning);
 
                 // Some models use "text" or "message" instead of "content"
                 var text = delta?["text"]?.GetValue<string>();
-                if (text != null) contentSb.Append(text);
+                if (!string.IsNullOrEmpty(text)) contentSb.Append(text);
             }
             catch { /* skip malformed chunks */ }
         }

@@ -6,13 +6,15 @@ Uses a **multi-AI consensus pipeline**: multiple AI providers generate recommend
 
 Results are cached in **SQLite** to avoid redundant AI calls on repeated searches.
 
+**Live demo:** https://places.guber.dev
+
 ---
 
 ## Features
 
 - **Multi-AI consensus** — OpenAI GPT-4o, Anthropic Claude, Google Gemini, Azure OpenAI, and OpenRouter all queried in parallel; cross-validation and consensus scoring pick the best results
 - **Multi-category filter** — select one or multiple categories (Restaurants + Cafes, etc.)
-- **Address or coordinates** — type any address or use lat/lng directly; geocoded via OpenStreetMap Nominatim
+- **Address or coordinates** — type any address or use lat/lng directly; geocoded via [Photon](https://photon.komoot.io/) (OpenStreetMap, no API key needed)
 - **Google Places enrichment** — real-world ratings, distances, and "Verified ✓" badges when Google Places API key is provided
 - **SQLite cache** — 24-hour TTL per location+category grid cell; instant second lookups
 - **Minimal responsive UI** — dark/light aware, no CSS frameworks
@@ -55,11 +57,15 @@ Edit `src/Recommendations.Api/appsettings.json` or set environment variables.
 ### Free models via OpenRouter
 
 Set `AiProviders:OpenRouter:Model` to any free model slug, for example:
-- `arcee-ai/trinity-mini:free`
-- `stepfun/step-3.5-flash:free`
-- `nvidia/nemotron-3-nano-30b-a3b:free`
+- `meta-llama/llama-3.3-70b-instruct:free` ✓ recommended
+- `google/gemma-3-27b-it:free`
+- `mistralai/mistral-small-3.1-24b-instruct:free`
+- `nousresearch/hermes-3-llama-3.1-405b:free`
 
+Browse all free models at [openrouter.ai/models?max_price=0](https://openrouter.ai/models?max_price=0).
 Get a free API key at [openrouter.ai](https://openrouter.ai).
+
+> **Note:** Avoid reasoning-only/thinking models (e.g. `arcee-ai/trinity-mini:free`, DeepSeek R1) — they produce reasoning traces without JSON output.
 
 ---
 
@@ -144,7 +150,7 @@ src/Recommendations.Api/
 - **Anthropic.SDK 4.x**
 - **Mscc.GenerativeAI** (Gemini)
 - **OpenRouter** via raw HttpClient (SSE streaming)
-- **Nominatim** (OpenStreetMap) for geocoding — free, no key needed
+- **Photon** (photon.komoot.io) for geocoding — free, no key needed
 - **FluentValidation**, **Serilog**
 
 ---

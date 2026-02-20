@@ -10,4 +10,10 @@ public interface IGeocodingProvider
         double latitude,
         double longitude,
         CancellationToken ct = default);
+
+    /// <summary>Returns up to <paramref name="limit"/> address suggestions for <paramref name="query"/>.</summary>
+    Task<IReadOnlyList<(string DisplayName, double Latitude, double Longitude)>> SearchSuggestionsAsync(
+        string query,
+        int limit = 5,
+        CancellationToken ct = default);
 }
