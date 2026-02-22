@@ -57,10 +57,20 @@ builder.Services.AddHttpClient("openrouter", client =>
 
 // Places & Geocoding
 builder.Services.AddScoped<IGeocodingProvider, NominatimGeocodingProvider>();
-builder.Services.AddHttpClient<IPlacesProvider, GooglePlacesProvider>(client =>
+
+// Overpass (OpenStreetMap) - free, no API key required, always available
+builder.Services.AddHttpClient<OverpassPlacesProvider>(client =>
 {
-    var baseUrl = builder.Configuration["GooglePlaces:BaseUrl"] ?? "https://places.googleapis.com/v1";
-    client.BaseAddress = new Uri(baseUrl + "/");
+    client.BaseAddress = new Uri("https://overpass-api.de/api/");
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+
+// IPlacesProvider: prefer Google Places if API key is configured, otherwise use Overpass
+builder.Services.AddTransient<IPlacesProvider>(sp =>
+{
+    var google = sp.GetRequiredService<GooglePlacesProvider>();
+    if (google.IsAvailable) return google;
+    return sp.GetRequiredService<OverpassPlacesProvider>();
 });
 
 // Cache

@@ -43,4 +43,17 @@ public static class UserApiKeyContext
     /// </summary>
     public static bool HasEffectiveKey(string providerKey, string configuredKey) =>
         !string.IsNullOrWhiteSpace(GetEffectiveKey(providerKey, configuredKey));
+
+    /// <summary>
+    /// Returns true when the user explicitly provided a key for <paramref name="providerKey"/>
+    /// in the current request (i.e. not the server-configured fallback).
+    /// Used to let user-supplied keys bypass the <c>Enabled</c> flag in appsettings.
+    /// </summary>
+    public static bool HasUserProvidedKey(string providerKey)
+    {
+        var dict = _keys.Value;
+        return dict is not null
+            && dict.TryGetValue(providerKey, out var key)
+            && !string.IsNullOrWhiteSpace(key);
+    }
 }

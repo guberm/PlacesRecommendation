@@ -11,6 +11,9 @@ let selectedCategories = new Set(['All']);
 let autocompleteTimeout = null;
 let suppressAutocomplete = false;
 
+// Loaded model lists per provider (for live filtering)
+const modelCache = new Map();
+
 function toggleCategory(btn) {
   const value = btn.dataset.value;
   if (value === 'All') {
@@ -56,10 +59,12 @@ async function loadProviderStatus() {
     container.innerHTML = allProviders.map(p => {
       // If server says unavailable, check if user has provided a key
       const available = p.available || hasUserKeyForProvider(p.name, savedSettings);
+      // Substitute user's model override if one is saved (server name has server-default model)
+      const displayName = resolveProviderDisplayName(p.name, savedSettings);
       return `
         <div class="provider-dot ${available ? 'active' : 'inactive'}">
           <span class="dot"></span>
-          <span>${p.name}${!p.available && available ? ' ✓' : ''}</span>
+          <span>${displayName}${!p.available && available ? ' ✓' : ''}</span>
         </div>`;
     }).join('');
   } catch (e) {
@@ -76,6 +81,25 @@ function hasUserKeyForProvider(providerName, settings) {
   if (n.includes('openai') || n.includes('gpt')) return !!settings['OpenAI'];
   if (n.includes('google places')) return !!settings['GooglePlaces'];
   return false;
+}
+
+// If the user has saved a model override in settings, replace the server-default model
+// embedded in the provider name (e.g. "OpenRouter (llama-3.3...)" → "OpenRouter (gemma-3...)")
+function resolveProviderDisplayName(serverName, settings) {
+  const n = serverName.toLowerCase();
+  let userModel = null;
+  if      (n.includes('openrouter'))                       userModel = settings['OpenRouterModel'];
+  else if (n.includes('azure'))                            userModel = settings['AzureOpenAIModel'];
+  else if (n.includes('openai') || n.includes('gpt'))      userModel = settings['OpenAIModel'];
+  else if (n.includes('claude') || n.includes('anthropic')) userModel = settings['AnthropicModel'];
+  else if (n.includes('gemini'))                           userModel = settings['GeminiModel'];
+
+  if (userModel) {
+    const parenIdx = serverName.indexOf('(');
+    const base = parenIdx >= 0 ? serverName.slice(0, parenIdx).trim() : serverName;
+    return `${base} (${userModel})`;
+  }
+  return serverName;
 }
 
 // ─── Address autocomplete ─────────────────────────────────────────────────────
@@ -341,6 +365,23 @@ async function fetchModels(provider) {
 
     populateModelSelect(selectEl, data.models, currentVal);
 
+    // Cache the full list so the search filter can rebuild from it
+    modelCache.set(provider, data.models);
+
+    // Inject a search input above the <select> the first time models load
+    let searchEl = document.getElementById(`model-search-${provider}`);
+    if (!searchEl) {
+      searchEl = document.createElement('input');
+      searchEl.type = 'text';
+      searchEl.id = `model-search-${provider}`;
+      searchEl.className = 'model-search';
+      searchEl.placeholder = 'Filter models…';
+      searchEl.addEventListener('input', () => filterModels(provider));
+      selectEl.parentNode.insertBefore(searchEl, selectEl);
+    }
+    searchEl.value = '';
+    searchEl.classList.remove('hidden');
+
     if (data.warning) {
       statusEl.textContent = data.warning;
       statusEl.className = 'model-status warning';
@@ -375,6 +416,18 @@ function populateModelSelect(selectEl, models, preserveVal) {
       selectEl.value = preserveVal;
     }
   }
+}
+
+function filterModels(provider) {
+  const models = modelCache.get(provider);
+  if (!models) return;
+  const q = document.getElementById(`model-search-${provider}`)?.value.toLowerCase() || '';
+  const selectEl = document.getElementById(`settings-model-${provider}`);
+  const currentVal = selectEl.value;
+  const filtered = q
+    ? models.filter(m => (m.id + ' ' + (m.name || '')).toLowerCase().includes(q))
+    : models;
+  populateModelSelect(selectEl, filtered, currentVal);
 }
 
 function showToast(message) {
@@ -438,11 +491,19 @@ function showProgress() {
   return () => clearInterval(interval);
 }
 
-function showError(msg) {
+function showError(msg, hint, actions) {
   document.getElementById('progressSection').classList.add('hidden');
   const sec = document.getElementById('errorSection');
   sec.classList.remove('hidden');
-  document.getElementById('errorMsg').textContent = msg;
+  const msgEl = document.getElementById('errorMsg');
+  let html = escHtml(msg);
+  if (hint) html += `<br><span class="error-hint">${escHtml(hint)}</span>`;
+  if (actions && actions.length > 0) {
+    html += `<div class="error-actions">${actions.map(a =>
+      `<button class="btn-sm" onclick="${escAttr(a.fn)}">${escHtml(a.label)}</button>`
+    ).join('')}</div>`;
+  }
+  msgEl.innerHTML = html;
 }
 
 function hideAll() {
@@ -518,9 +579,27 @@ async function search() {
     searchBtn.textContent = origBtnText;
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: res.statusText }));
-      // ProblemDetails uses "detail", custom errors use "error" or "errors"
-      showError(err.detail || err.error || err.errors?.join(', ') || res.statusText || 'Request failed.');
+      let errBody = null;
+      if (res.status !== 504) errBody = await res.json().catch(() => null);
+      const rawDetail = (errBody?.detail || errBody?.error || errBody?.errors?.join(', ') || '').toLowerCase();
+
+      let msg, hint, actions = [];
+      if (res.status === 503 && rawDetail.includes('no ai provider')) {
+        msg = 'No AI provider is configured.';
+        hint = 'Open Settings and enter an API key. OpenRouter offers free models — no credit card needed.';
+        actions = [{ label: '⚙ Open Settings', fn: 'openSettings()' }];
+      } else if (res.status === 503) {
+        msg = 'The AI provider couldn\'t complete the request.';
+        hint = 'This is usually a temporary rate limit — try again in a moment. If it persists, switch models and avoid reasoning-only models (e.g. DeepSeek R1, trinity-mini).';
+        actions = [{ label: 'Retry', fn: 'search()' }, { label: '⚙ Open Settings', fn: 'openSettings()' }];
+      } else if (res.status === 504) {
+        msg = 'Request timed out.';
+        hint = 'The AI provider took too long to respond. Try again, or select a faster model in Settings.';
+        actions = [{ label: 'Retry', fn: 'search()' }, { label: '⚙ Open Settings', fn: 'openSettings()' }];
+      } else {
+        msg = errBody?.detail || errBody?.error || errBody?.errors?.join(', ') || res.statusText || 'Request failed.';
+      }
+      showError(msg, hint, actions);
       return;
     }
 
@@ -530,7 +609,11 @@ async function search() {
     stopProgress();
     searchBtn.disabled = false;
     searchBtn.textContent = origBtnText;
-    showError('Network error: ' + e.message);
+    showError(
+      'Network error — could not reach the server.',
+      'Check your internet connection and try again.',
+      [{ label: 'Retry', fn: 'search()' }]
+    );
   } finally {
     searchBtn.disabled = false;
     searchBtn.textContent = origBtnText;

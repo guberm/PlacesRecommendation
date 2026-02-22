@@ -16,7 +16,8 @@ public class AnthropicProvider : AiProviderBase, IAiProvider
     private readonly ILogger<AnthropicProvider> _logger;
 
     public string Name => "Claude";
-    public bool IsAvailable => _options.Enabled && UserApiKeyContext.HasEffectiveKey("Anthropic", _options.ApiKey);
+    public bool IsAvailable => UserApiKeyContext.HasEffectiveKey("Anthropic", _options.ApiKey)
+        && (_options.Enabled || UserApiKeyContext.HasUserProvidedKey("Anthropic"));
 
     public AnthropicProvider(IOptions<AiProviderOptions> options, ILogger<AnthropicProvider> logger)
     {

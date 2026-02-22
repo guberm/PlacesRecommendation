@@ -124,7 +124,7 @@ public abstract class AiProviderBase
 
     protected static List<PlaceRecommendation> ParseGenerationJson(string raw, string providerName, PlaceCategory category)
     {
-        var json = ExtractJson(raw);
+        var json = SanitizeJson(ExtractJson(raw));
         if (string.IsNullOrWhiteSpace(json)) return new();
 
         JsonNode? root;
@@ -170,7 +170,7 @@ public abstract class AiProviderBase
 
     protected static CrossValidationResult ParseValidationJson(string raw, string validatedBy, string originalSource, IReadOnlyList<PlaceRecommendation> originals)
     {
-        var json = ExtractJson(raw);
+        var json = SanitizeJson(ExtractJson(raw));
         var validated = new List<ValidatedRecommendation>();
 
         if (!string.IsNullOrWhiteSpace(json))
@@ -272,6 +272,23 @@ public abstract class AiProviderBase
         {
             return scoredCandidates.ToList();
         }
+    }
+
+    // Sanitize common AI JSON hallucination patterns before parsing.
+    private static string SanitizeJson(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return json;
+
+        // Fix: number immediately followed by a quoted string — e.g. "confidenceScore": 1.0"High",
+        // Strip the stray string so the number is left as the value.
+        json = Regex.Replace(json,
+            @"(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*""[^""]*""(\s*[,}\]])",
+            "$1$2");
+
+        // Fix: trailing commas before } or ] — "key": "val", }
+        json = Regex.Replace(json, @",(\s*[}\]])", "$1");
+
+        return json;
     }
 
     protected static string ExtractJson(string raw)

@@ -16,7 +16,7 @@ Deploy scripts (contain server credentials) are in a **separate private repo**: 
 - **ASP.NET Core**  Minimal APIs (no controllers)
 - **Entity Framework Core 9 + SQLite**  `recommendations.db`
 - **AI Providers**: OpenAI GPT-4o, Anthropic Claude, Google Gemini, Azure OpenAI, OpenRouter (5 total)
-- **Places Data**: Google Places API v1 (Nearby Search)
+- **Places Data**: Google Places API v1 (Nearby Search) — optional; **Overpass API** (OpenStreetMap) used as free fallback
 - **Geocoding**: [Photon](https://photon.komoot.io/) (OpenStreetMap)  free, no API key required
 - **Logging**: Serilog  Console + File (logs/)
 
@@ -53,7 +53,7 @@ src/Recommendations.Api/
   Configuration/       # Strongly-typed options classes
   Infrastructure/
     AiProviders/       # OpenAiProvider, AnthropicProvider, GeminiProvider, AzureOpenAiProvider, OpenRouterProvider
-    PlacesProviders/   # GooglePlacesProvider, NominatimGeocodingProvider (uses Photon internally)
+    PlacesProviders/   # GooglePlacesProvider, NominatimGeocodingProvider (uses Photon internally), OverpassPlacesProvider (free OSM fallback)
     Cache/             # SqliteCacheService, CacheKeyBuilder
     Persistence/       # RecommendationsDbContext, CachedRecommendation entity
   Pipeline/
@@ -73,7 +73,7 @@ src/Recommendations.Api/
 1. **GeocodeStep**  Addresslat/lng via Photon (photon.komoot.io). Also does reverse geocoding (lat/lngaddress). Falls back to address-only mode if Photon is unreachable.
 2. **CacheCheckStep**  SQLite lookup (key: `rec:v1:{lat:F3}:{lng:F3}:{cat}` or `rec:v1:addr:{hash}:{cat}`)
 3. **ParallelGenerationStep**  All AI providers generate independently via `Task.WhenAll`
-4. **GooglePlacesEnrichmentStep**  Fetch real places, fuzzy-match with AI output (skipped if geocoding unavailable)
+4. **GooglePlacesEnrichmentStep**  Fetch real places, fuzzy-match with AI output (uses Overpass/OSM free fallback when no Google Places key; skipped if geocoding unavailable)
 5. **CrossValidationStep**  Each AI validates every other AI's output
 6. **ConsensusScoringStep**  Weighted formula: `FinalScore = BaseScore0.4 + ValidationScore0.35 + Bonuses - Penalties`
 7. **SynthesisStep**  Fastest AI rewrites polished final descriptions
@@ -118,10 +118,13 @@ The provider class is still named `NominatimGeocodingProvider` (registered as `I
 ## Key Design Decisions
 - **Graceful degradation**: Any AI provider failure is caught; system works with remaining providers
 - **Photon geocoding**: No auth required, no rate-limiting concerns for normal use
+- **Overpass fallback**: `IPlacesProvider` DI factory in `Program.cs` returns `GooglePlacesProvider` if its key is set, otherwise `OverpassPlacesProvider` — zero changes needed in pipeline steps
+- **User-supplied API keys bypass `Enabled`**: `UserApiKeyContext.HasUserProvidedKey(providerKey)` lets per-request user keys activate a provider even when `Enabled: false` in appsettings. All 5 `IsAvailable` checks use `(_options.Enabled || HasUserProvidedKey(...))`.
 - **IOptions<T> pattern**: All config via `IOptions<AiProviderOptions>` etc.
 - **Record types**: All domain models are immutable C# records with `with` expressions
 - **CacheWriteStep awaited**: NOT fire-and-forget  scoped DbContext is disposed when request ends
 - **OpenRouter streaming**: Uses SSE streaming (`stream:true`) with `HttpCompletionOption.ResponseHeadersRead`; captures `delta.content`, `delta.reasoning_content` AND `delta.reasoning` (different models use different field names)
+- **SanitizeJson**: `AiProviderBase.SanitizeJson()` runs before `JsonNode.Parse` on every AI response — strips stray quoted strings after numbers (e.g. `1.0"High"`) and trailing commas that some models generate
 
 ## OpenRouter Model Selection
 
@@ -144,14 +147,21 @@ Browse all free models: https://openrouter.ai/models?max_price=0
 Site is deployed to IIS at https://places.guber.dev via PowerShell scripts.
 Deploy scripts are kept in a **private** repo (`guberm/PlacesRecommendation-Deploy`) and excluded from this repo via `.gitignore`.
 
-To build and publish locally:
+To build, publish, and deploy:
 ```bash
 cd src/Recommendations.Api
 dotnet publish -c Release -o ../../publish
+# Then run (from repo root):
+powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1
+powershell -ExecutionPolicy Bypass -File deploy\verify.ps1
 ```
 
+The `deploy/` folder is in `.gitignore` — credentials never enter the public repo.
+
 ## Common Issues
-- **No providers available**: Check that at least one `ApiKey` is set in appsettings
+- **No providers available with user key**: Check `IsAvailable` — it must use `(_options.Enabled || HasUserProvidedKey(...))` pattern so user-supplied keys work even when `Enabled: false` in appsettings.
+- **No providers available**: Check that at least one `ApiKey` is set in appsettings or passed via `UserApiKeys` in the request
+- **AI returns malformed JSON (number+"string" in same field)**: `AiProviderBase.SanitizeJson()` handles this automatically — strips `"High"` suffix from `1.0"High"` and trailing commas before `}` / `]`
 - **EF Core SQLite DateTimeOffset error**: Use `DateTime` not `DateTimeOffset` for entity fields  SQLite provider can't translate DateTimeOffset comparisons
 - **JSON enum deserialization**: `ConfigureHttpJsonOptions` with `JsonStringEnumConverter` required  enums sent as strings ("Restaurant") not integers
 - **OpenRouter empty response**: Check `delta.content` first, then `delta.reasoning_content`, then `delta.reasoning`. Use `BalancedJson()` for extraction (handles trailing prose after JSON). If parse yields 0 results, a diagnostic log entry is written with the raw accumulated text.
