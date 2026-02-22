@@ -19,6 +19,7 @@ Deploy scripts (contain server credentials) are in a **separate private repo**: 
 - **Places Data**: Google Places API v1 (Nearby Search) — optional; **Overpass API** (OpenStreetMap) used as free fallback
 - **Geocoding**: [Photon](https://photon.komoot.io/) (OpenStreetMap)  free, no API key required
 - **Logging**: Serilog  Console + File (logs/)
+- **CDN**: Cloudflare  sits in front of https://places.guber.dev; caches static assets (.js, .css) at edge keyed by full URL including query string
 
 ## How to Run
 
@@ -147,18 +148,35 @@ Browse all free models: https://openrouter.ai/models?max_price=0
 Site is deployed to IIS at https://places.guber.dev via PowerShell scripts.
 Deploy scripts are kept in a **private** repo (`guberm/PlacesRecommendation-Deploy`) and excluded from this repo via `.gitignore`.
 
-To build, publish, and deploy:
+### Full deploy workflow
+
+1. **If FE changed** (app.js or app.css): bump the `?v=YYYYMMDD` query string in `wwwroot/index.html` for both `app.css` and `app.js` references — this busts the Cloudflare CDN cache for the new URLs (Cloudflare caches per full URL including query string)
+2. Build and publish:
 ```bash
 cd src/Recommendations.Api
 dotnet publish -c Release -o ../../publish
-# Then run (from repo root):
+```
+3. Deploy + configure IIS:
+```powershell
 powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1
+```
+4. Verify health:
+```powershell
 powershell -ExecutionPolicy Bypass -File deploy\verify.ps1
 ```
 
 The `deploy/` folder is in `.gitignore` — credentials never enter the public repo.
 
+### Cloudflare CDN caching
+
+Static assets (`app.js`, `app.css`) are cached at Cloudflare's edge with `Cache-Control: max-age=60` from the origin but edge TTL may be longer. After deploying new FE files the old version will be served until:
+- The URL changes (version query string `?v=YYYYMMDD`) — **preferred approach**
+- Or Cloudflare cache expires naturally
+- Or cache is manually purged via Cloudflare dashboard/API
+
 ## Common Issues
+- **FE changes not showing after deploy (Cloudflare)**: Cloudflare caches `app.js`/`app.css` at edge. Bump `?v=YYYYMMDD` in `index.html` before publishing — the new URL is a Cloudflare cache miss and serves fresh content immediately.
+- **WinRM recursive copy drops subdirectory contents**: `Copy-Item -Recurse -ToSession wildcard\*` silently skips nested dirs (e.g. `wwwroot/js/`, `wwwroot/css/`). Fixed in `deploy.ps1` — now iterates `Get-ChildItem -Recurse` explicitly and copies file-by-file.
 - **No providers available with user key**: Check `IsAvailable` — it must use `(_options.Enabled || HasUserProvidedKey(...))` pattern so user-supplied keys work even when `Enabled: false` in appsettings.
 - **No providers available**: Check that at least one `ApiKey` is set in appsettings or passed via `UserApiKeys` in the request
 - **AI returns malformed JSON (number+"string" in same field)**: `AiProviderBase.SanitizeJson()` handles this automatically — strips `"High"` suffix from `1.0"High"` and trailing commas before `}` / `]`

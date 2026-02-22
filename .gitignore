@@ -32,6 +32,7 @@ Thumbs.db
 # Claude working files
 .claude/
 tmpclaude-*
+.playwright-mcp/
 
 # Deployment scripts (contain credentials — stored in private repo)
 deploy/
