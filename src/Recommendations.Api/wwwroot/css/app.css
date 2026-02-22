@@ -652,6 +652,9 @@ main { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
 }
 
 .provider-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--primary);
@@ -769,3 +772,42 @@ body.modal-open { overflow: hidden; }
   opacity: 0;
   transform: translateX(-50%) translateY(1rem);
 }
+
+/* ─── Header actions (GitHub + settings) ────────────────────────────────────── */
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.github-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: var(--radius);
+  color: white;
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.3);
+  text-decoration: none;
+  transition: background 0.2s;
+}
+
+.github-btn:hover { background: rgba(255,255,255,0.25); }
+
+/* ─── Settings: API key links ────────────────────────────────────────────────── */
+
+.api-key-link {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+  opacity: 0.75;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.api-key-link:hover { opacity: 1; text-decoration: underline; }

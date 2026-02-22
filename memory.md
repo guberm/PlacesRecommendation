@@ -17,6 +17,7 @@ Quick-reference for Claude. Full detail in `CLAUDE.md`.
 | Geocoding | Photon (photon.komoot.io) — no key needed |
 | CDN | Cloudflare — caches `.js`/`.css` at edge by full URL |
 | Deployment | IIS via WinRM PowerShell (`deploy/deploy.ps1`) |
+| MCP | `mcp/server.mjs` (recommendations) + GitHub MCP |
 
 ## Run locally
 ```bash
@@ -79,6 +80,17 @@ builder.Services.AddTransient<IPlacesProvider>(sp => {
 - **Recommended**: `meta-llama/llama-3.3-70b-instruct:free`
 - **Avoid**: any reasoning/thinking model (DeepSeek R1, arcee-ai/trinity-mini:free, etc.) — they emit `delta.reasoning` only, no `delta.content` JSON
 - Free models list: https://openrouter.ai/models?max_price=0
+
+## MCP Servers (`.mcp.json` at repo root)
+
+| Server | File | Trigger |
+|---|---|---|
+| `recommendations` | `mcp/server.mjs` | Auto-loaded by Claude Code; needs .NET API running |
+| `github` | npx `@modelcontextprotocol/server-github` | Needs `GITHUB_PERSONAL_ACCESS_TOKEN` env var |
+
+**recommendations tools:** `get_recommendations`, `get_providers_status`, `geocode_address`, `get_cache_status`
+
+Zero deps — Node.js 18+ `fetch` only. Default API URL: `http://localhost:5145` (override via `RECOMMENDATIONS_API_URL`).
 
 ## .gitignore exclusions (sensitive locals)
 ```

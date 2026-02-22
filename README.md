@@ -106,7 +106,49 @@ Provide either `latitude`+`longitude` **or** `address` (not both required).
 
 ---
 
-## Architecture
+## MCP / Claude Code Integration
+
+The project ships a zero-dependency **MCP server** (`mcp/server.mjs`) so any MCP-capable client (Claude Code, Claude Desktop) can query recommendations directly — no browser needed.
+
+### Tools exposed
+
+| Tool | Description |
+|---|---|
+| `get_recommendations` | Full AI-consensus pipeline: address or lat/lng → ranked places |
+| `get_providers_status` | Which AI providers (OpenAI, Claude, Gemini, Azure, OpenRouter) are available |
+| `geocode_address` | Address autocomplete → coordinates via Photon/OSM |
+| `get_cache_status` | SQLite cache statistics |
+
+### Setup
+
+The server requires **no npm install** — uses only Node.js 18+ built-in `fetch`.
+
+1. Make sure the .NET API is running (`dotnet run` — port 5145 by default)
+2. Open this project folder in Claude Code — it auto-loads `.mcp.json`
+3. Start asking: *"What are the best restaurants near the Eiffel Tower?"*
+
+Claude will call `get_recommendations` automatically through MCP.
+
+### Manual invocation (stdio)
+
+```bash
+RECOMMENDATIONS_API_URL=http://localhost:5145 node mcp/server.mjs
+# Then send JSON-RPC over stdin, e.g.:
+# {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+```
+
+### Override API URL
+
+```json
+// .mcp.json → mcpServers → recommendations → env
+{ "RECOMMENDATIONS_API_URL": "https://places.guber.dev" }
+```
+
+### GitHub MCP (optional)
+
+A GitHub MCP server is also configured. Set `GITHUB_PERSONAL_ACCESS_TOKEN` (needs `repo` scope) before launching Claude Code to enable repo management tools.
+
+---
 
 ### 8-Step AI Pipeline
 

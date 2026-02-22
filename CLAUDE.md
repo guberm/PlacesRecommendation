@@ -143,6 +143,32 @@ Browse all free models: https://openrouter.ai/models?max_price=0
 2. Register in `Program.cs`: `builder.Services.AddSingleton<IAiProvider, MyProvider>()`
 3. Add options to `Configuration/AiProviderOptions.cs` and `appsettings.json`
 
+## MCP Servers
+
+Project ships two MCP servers configured in `.mcp.json` at the repo root. Claude Code auto-loads them on startup.
+
+### recommendations (primary — `mcp/server.mjs`)
+
+Zero-dependency Node.js server (no `npm install`). Wraps the REST API as MCP tools.
+
+**Tools:**
+| Tool | Maps to | Description |
+|---|---|---|
+| `get_recommendations` | `POST /api/recommendations` | Full AI pipeline — address or lat/lng → ranked places |
+| `get_providers_status` | `GET /api/providers/status` | Which AI providers are live |
+| `geocode_address` | `GET /api/geocode/suggest` | Address → coordinates (Photon) |
+| `get_cache_status` | `GET /api/recommendations/cache/status` | SQLite cache stats |
+
+**Config env var:** `RECOMMENDATIONS_API_URL` (default: `http://localhost:5145`)
+
+Requires the .NET service to be running. Uses Node.js 18+ built-in `fetch` — no external packages.
+
+### github (auxiliary)
+
+GitHub MCP server (`@modelcontextprotocol/server-github`). Enables repo management tools (issues, PRs, files, branches).
+
+**Setup:** Set env var `GITHUB_PERSONAL_ACCESS_TOKEN` with a token that has `repo` scope before launching Claude Code.
+
 ## Deployment
 
 Site is deployed to IIS at https://places.guber.dev via PowerShell scripts.

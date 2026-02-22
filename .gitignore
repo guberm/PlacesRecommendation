@@ -34,6 +34,10 @@ Thumbs.db
 tmpclaude-*
 .playwright-mcp/
 
+# Temp screenshots (created by Playwright during dev/test)
+/*.png
+/*.jpeg
+
 # Deployment scripts (contain credentials — stored in private repo)
 deploy/
 
