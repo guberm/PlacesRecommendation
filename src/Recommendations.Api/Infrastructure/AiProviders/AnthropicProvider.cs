@@ -16,6 +16,7 @@ public class AnthropicProvider : AiProviderBase, IAiProvider
     private readonly ILogger<AnthropicProvider> _logger;
 
     public string Name => "Claude";
+    public string Model => UserApiKeyContext.GetEffectiveModel("AnthropicModel", _options.Model);
     public bool IsAvailable => UserApiKeyContext.HasEffectiveKey("Anthropic", _options.ApiKey)
         && (_options.Enabled || UserApiKeyContext.HasUserProvidedKey("Anthropic"));
 

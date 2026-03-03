@@ -6,6 +6,7 @@ namespace Recommendations.Api.Abstractions;
 public interface IAiProvider
 {
     string Name { get; }
+    string Model { get; }
     bool IsAvailable { get; }
 
     Task<AiProviderResult> GenerateRecommendationsAsync(

@@ -288,6 +288,10 @@ public abstract class AiProviderBase
         // Fix: trailing commas before } or ] — "key": "val", }
         json = Regex.Replace(json, @",(\s*[}\]])", "$1");
 
+        // Fix: missing comma between adjacent string values — "a" "b" or "a"\n"b"
+        // In valid JSON a closing quote followed by whitespace then an opening quote always needs a comma.
+        json = Regex.Replace(json, @"""(\s+)""", "\",$1\"");
+
         return json;
     }
 

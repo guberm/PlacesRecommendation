@@ -16,6 +16,7 @@ public class OpenAiProvider : AiProviderBase, IAiProvider
     private readonly ILogger<OpenAiProvider> _logger;
 
     public string Name => "OpenAI GPT-4";
+    public string Model => UserApiKeyContext.GetEffectiveModel("OpenAIModel", _options.Model);
     public bool IsAvailable => UserApiKeyContext.HasEffectiveKey("OpenAI", _options.ApiKey)
         && (_options.Enabled || UserApiKeyContext.HasUserProvidedKey("OpenAI"));
 

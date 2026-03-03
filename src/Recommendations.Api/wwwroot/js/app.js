@@ -59,10 +59,12 @@ async function loadProviderStatus() {
     container.innerHTML = allProviders.map(p => {
       // If server says unavailable, check if user has provided a key
       const available = p.available || hasUserKeyForProvider(p.name, savedSettings);
-      // Substitute user's model override if one is saved (server name has server-default model)
-      const displayName = resolveProviderDisplayName(p.name, savedSettings);
+      // Substitute user's model override if one is saved; fall back to server-reported model
+      const displayName = resolveProviderDisplayName(p.name, savedSettings, p.model);
+      const target = getProviderSettingsTarget(p.name);
+      const clickable = target ? `clickable" onclick="openSettingsForProvider('${target}')" title="Click to configure` : '';
       return `
-        <div class="provider-dot ${available ? 'active' : 'inactive'}">
+        <div class="provider-dot ${available ? 'active' : 'inactive'} ${clickable}">
           <span class="dot"></span>
           <span>${displayName}${!p.available && available ? ' ✓' : ''}</span>
         </div>`;
@@ -83,23 +85,49 @@ function hasUserKeyForProvider(providerName, settings) {
   return false;
 }
 
-// If the user has saved a model override in settings, replace the server-default model
-// embedded in the provider name (e.g. "OpenRouter (llama-3.3...)" → "OpenRouter (gemma-3...)")
-function resolveProviderDisplayName(serverName, settings) {
+// Show the effective model for each provider. User-saved settings take priority;
+// server-reported model (from /api/providers/status) is the fallback.
+function resolveProviderDisplayName(serverName, settings, serverModel) {
   const n = serverName.toLowerCase();
   let userModel = null;
-  if      (n.includes('openrouter'))                       userModel = settings['OpenRouterModel'];
-  else if (n.includes('azure'))                            userModel = settings['AzureOpenAIModel'];
-  else if (n.includes('openai') || n.includes('gpt'))      userModel = settings['OpenAIModel'];
+  if      (n.includes('openrouter'))                        userModel = settings['OpenRouterModel'];
+  else if (n.includes('azure'))                             userModel = settings['AzureOpenAIModel'];
+  else if (n.includes('openai') || n.includes('gpt'))       userModel = settings['OpenAIModel'];
   else if (n.includes('claude') || n.includes('anthropic')) userModel = settings['AnthropicModel'];
-  else if (n.includes('gemini'))                           userModel = settings['GeminiModel'];
+  else if (n.includes('gemini'))                            userModel = settings['GeminiModel'];
 
-  if (userModel) {
+  const effectiveModel = userModel || serverModel;
+  if (effectiveModel) {
+    // Strip any model already embedded in the server name (e.g. "OpenRouter (llama-3.3...)")
     const parenIdx = serverName.indexOf('(');
     const base = parenIdx >= 0 ? serverName.slice(0, parenIdx).trim() : serverName;
-    return `${base} (${userModel})`;
+    return `${base} (${effectiveModel})`;
   }
   return serverName;
+}
+
+function getProviderSettingsTarget(providerName) {
+  const n = providerName.toLowerCase();
+  if (n.includes('openrouter'))                        return 'OpenRouter';
+  if (n.includes('azure'))                             return 'AzureOpenAI';
+  if (n.includes('openai') || n.includes('gpt'))       return 'OpenAI';
+  if (n.includes('claude') || n.includes('anthropic')) return 'Anthropic';
+  if (n.includes('gemini'))                            return 'Gemini';
+  if (n.includes('google places'))                     return 'GooglePlaces';
+  return null;
+}
+
+function openSettingsForProvider(providerKey) {
+  openSettings();
+  requestAnimationFrame(() => {
+    const el = document.getElementById('settings-model-' + providerKey)
+            || document.getElementById('settings-key-' + providerKey);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.focus();
+    el.classList.add('field-highlight');
+    setTimeout(() => el.classList.remove('field-highlight'), 1200);
+  });
 }
 
 // ─── Address autocomplete ─────────────────────────────────────────────────────

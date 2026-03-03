@@ -41,16 +41,16 @@ public class GooglePlacesEnrichmentStep
             ctx.GoogleEnriched = ctx.RealPlaces.Count > 0;
 
             // Enrich AI recommendations with real place data
-            foreach (var result in ctx.GenerationResults)
+            for (var i = 0; i < ctx.GenerationResults.Count; i++)
             {
+                var result = ctx.GenerationResults[i];
                 var enriched = result.Recommendations.Select(rec =>
                 {
                     var match = FindBestMatch(rec.Name, ctx.RealPlaces);
                     return match is not null ? rec.WithEnrichedData(match) : rec;
                 }).ToList();
 
-                ctx.GenerationResults[ctx.GenerationResults.IndexOf(result)] =
-                    result with { Recommendations = enriched };
+                ctx.GenerationResults[i] = result with { Recommendations = enriched };
             }
 
             _logger.LogInformation("Google Places enrichment: {RealCount} real places found, matched with AI recommendations",

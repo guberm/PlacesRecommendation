@@ -19,6 +19,7 @@ public static class HealthEndpoints
                 providers = providers.Select(p => new
                 {
                     name = p.Name,
+                    model = p.Model,
                     available = p.IsAvailable,
                     configured = p.IsAvailable
                 }),

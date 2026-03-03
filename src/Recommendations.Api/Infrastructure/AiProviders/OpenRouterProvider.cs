@@ -25,6 +25,7 @@ public class OpenRouterProvider : AiProviderBase, IAiProvider
     private readonly ILogger<OpenRouterProvider> _logger;
 
     public string Name => "OpenRouter (" + UserApiKeyContext.GetEffectiveModel("OpenRouterModel", _options.Model) + ")";
+    public string Model => UserApiKeyContext.GetEffectiveModel("OpenRouterModel", _options.Model);
     public bool IsAvailable => UserApiKeyContext.HasEffectiveKey("OpenRouter", _options.ApiKey)
         && (_options.Enabled || UserApiKeyContext.HasUserProvidedKey("OpenRouter"));
 

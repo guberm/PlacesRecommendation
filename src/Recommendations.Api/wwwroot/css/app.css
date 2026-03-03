@@ -72,6 +72,14 @@ body {
 
 .provider-dot.active .dot { background: #7bff9e; }
 .provider-dot.inactive .dot { background: #ff6b6b; }
+.provider-dot.clickable { cursor: pointer; }
+.provider-dot.clickable:hover span:last-child { text-decoration: underline; text-underline-offset: 2px; }
+
+@keyframes fieldPulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  40% { box-shadow: 0 0 0 3px rgba(99,179,237,0.55); }
+}
+.field-highlight { animation: fieldPulse 0.6s ease-in-out 2; }
 
 main { max-width: 1200px; margin: 2rem auto; padding: 0 1rem; }
 

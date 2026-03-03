@@ -15,6 +15,7 @@ public class GeminiProvider : AiProviderBase, IAiProvider
     private readonly ILogger<GeminiProvider> _logger;
 
     public string Name => "Google Gemini";
+    public string Model => UserApiKeyContext.GetEffectiveModel("GeminiModel", _options.Model);
     public bool IsAvailable => UserApiKeyContext.HasEffectiveKey("Gemini", _options.ApiKey)
         && (_options.Enabled || UserApiKeyContext.HasUserProvidedKey("Gemini"));
 

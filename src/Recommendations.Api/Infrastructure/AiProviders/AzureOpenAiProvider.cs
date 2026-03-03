@@ -16,6 +16,7 @@ public class AzureOpenAiProvider : AiProviderBase, IAiProvider
     private readonly ILogger<AzureOpenAiProvider> _logger;
 
     public string Name => "Azure OpenAI";
+    public string Model => UserApiKeyContext.GetEffectiveModel("AzureOpenAIModel", _options.DeploymentName);
     public bool IsAvailable =>
         UserApiKeyContext.HasEffectiveKey("AzureOpenAI", _options.ApiKey)
         && !string.IsNullOrWhiteSpace(UserApiKeyContext.GetEffectiveKey("AzureOpenAIEndpoint", _options.Endpoint))
